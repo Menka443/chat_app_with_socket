@@ -1,0 +1,67 @@
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class ChatServer {
+    private static final Set<ClientHandler> clients = Collections.synchronizedSet(new HashSet<>());
+
+    public static void main(String[] args) {
+        int port = 9999;
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            System.out.println("Chat server started on port " + port);
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                ClientHandler client = new ClientHandler(clientSocket);
+                clients.add(client);
+                new Thread(client).start();
+            }
+        } catch (IOException e) {
+            System.err.println("Server error: " + e.getMessage());
+        }
+    }
+
+    static void broadcast(String message, ClientHandler sender) {
+        synchronized (clients) {
+            for (ClientHandler client : clients) {
+                if (client != sender) {
+                    client.sendMessage(message);
+                }
+            }
+        }
+    }
+
+    static class ClientHandler implements Runnable {
+        private final Socket socket;
+        private PrintWriter out;
+        private BufferedReader in;
+
+        ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
+
+        public void run() {
+            try {
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+                String message;
+                while ((message = in.readLine()) != null) {
+                    System.out.println(message);
+                    ChatServer.broadcast(message, this);
+                }
+            } catch (IOException e) {
+                System.out.println("Client disconnected");
+            } finally {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {}
+                clients.remove(this);
+            }
+        }
+
+        void sendMessage(String message) {
+            if (out != null) {
+                out.println(message);
+            }
+        }
+    }
+}
